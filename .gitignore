@@ -9,12 +9,11 @@ lerna-debug.log*
 
 .venv/
 __pycache__/
-*.pt
 *.onnx
 *.dll
 *.pyd
-models/
-data/
+
+# Environment files
 .env
 .env.local
 
