@@ -17,6 +17,9 @@ __pycache__/
 .env
 .env.local
 
+backend/uploads/
+backend/Test/
+
 # Dependency directories
 node_modules
 dist

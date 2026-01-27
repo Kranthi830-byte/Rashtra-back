@@ -1,0 +1,84 @@
+// Firestore Security Rules for RASHTRA - Smart Road Reporting System
+// Version: 1.0
+// Last Updated: 2026-01-26
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==================== POTHOLES COLLECTION ====================
+    // Public read access for community feed
+    // Authenticated users can create reports
+    // Admins/Contractors can update status
+    match /potholes/{potholeId} {
+      // Allow anyone to read pothole reports (for public feed)
+      allow read: if true;
+      
+      // Allow authenticated users to create new reports
+      allow create: if request.auth != null;
+      
+      // Allow users to update their own reports (status changes)
+      // Allow admins/contractors to update any report
+      allow update: if (
+        // User can update their own report
+        (request.auth != null && 
+         resource.data.userId == request.auth.uid) ||
+        // Admin can update any report
+        (request.auth != null && 
+         request.auth.token.admin == true) ||
+        // Contractor can update status to in_progress or repaired
+        (request.auth != null && 
+         request.auth.token.contractor == true &&
+         request.resource.data.status in ['in_progress', 'repaired'])
+      );
+      
+      // Allow users to delete their own reports (within 5 minutes)
+      // Allow admins to delete any report
+      allow delete: if (
+        // User can delete their own report within 5 minutes
+        (request.auth != null && 
+         resource.data.userId == request.auth.uid &&
+         resource.data.metadata.reportedAt != null &&
+         request.time < resource.data.metadata.reportedAt + duration.value(5, 'm')) ||
+        // Admin can delete any report
+        (request.auth != null && 
+         request.auth.token.admin == true)
+      );
+    }
+    
+    // ==================== USERS COLLECTION ====================
+    // Users can only read/write their own data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // ==================== CONTRACTORS COLLECTION ====================
+    // Public read access
+    // Admin write access
+    match /contractors/{contractorId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // ==================== ANALYTICS COLLECTION ====================
+    // Public read access
+    // Admin write access
+    match /analytics/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // ==================== ADMIN LOGS COLLECTION ====================
+    // Only admins can read/write
+    match /adminLogs/{logId} {
+      allow read, write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // ==================== GLOBAL SETTINGS ====================
+    // Only admins can read/write global settings
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+  }
+}

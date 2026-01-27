@@ -12,6 +12,7 @@ import { COLORS } from '../constants';
 // RED = Critical (High)
 // ORANGE = Warning (Medium)
 // GREEN = Safe/Low (Low)
+
 const getMarkerColor = (score: number) => {
   if (score >= 7.5) return COLORS.alert; // Red
   if (score >= 3.5) return COLORS.warning; // Orange
