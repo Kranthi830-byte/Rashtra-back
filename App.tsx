@@ -16,46 +16,6 @@ import Chatbot from './components/Chatbot';
 // Types & Services
 import { UserRole } from './types';
 import { MOCK_ADMIN } from './constants';
-import { FirestoreService } from './services/firestoreService';
-import { GeoPoint } from 'firebase/firestore';
-
-import { StorageService } from './services/storageService';
-
-const testUpload = async () => {
-  try {
-    // 1. Convert your local test image to a File object
-    // Note: 'road.jpg' must be in your 'public' folder for this fetch to work in dev
-    const response = await fetch('/road-2.jpg'); 
-    const blob = await response.blob();
-    const testFile = new File([blob], "road-2.jpg", { type: "image/jpeg" });
-
-    console.log("📤 Uploading real image to Storage...");
-    const realImageUrl = await StorageService.uploadPotholeImage(testFile);
-
-    // 2. Create the Firestore report with the REAL URL
-    const reportId = await FirestoreService.createPotholeReport({
-      userId: "test-user-001",
-      location: {
-        latitude: 17.3850,
-        longitude: 78.4867,
-        geopoint: new GeoPoint(17.3850, 78.4867),
-        address: "Charminar Road, Hyderabad"
-      },
-      roadInfo: { type: 'MAIN', importance: 4 },
-      severity: { score: 7, area: 0.8, confidence: 0.92 },
-      detection: {
-        boundingBox: { x: 0, y: 0, width: 100, height: 100 },
-        imageUrl: realImageUrl // Now using the actual Firebase Storage URL!
-      },
-      status: 'reported',
-      metadata: {} as any 
-    });
-
-    console.log("✅ Success! Real image report created with ID:", reportId);
-  } catch (e) {
-    console.error("❌ Real image test failed:", e);
-  }
-};
 
 // --- LAYOUTS ---
 const UserLayout = ({ onLogout }: { onLogout: () => void }) => (
@@ -88,12 +48,8 @@ const App = () => {
   const [userRole, setUserRole] = useState<UserRole | null>(null);
 
   // Safely trigger the test upload once on mount
-  useEffect(() => {
-    console.log("🚀 Firebase Check: Running test upload...");
-    testUpload();
-  }, []);
-
-  const handleLogin = (role: UserRole) => {
+  
+const handleLogin = (role: UserRole) => {
     setUserRole(role);
   };
 
