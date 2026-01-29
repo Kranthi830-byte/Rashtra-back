@@ -1,17 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Moon, Shield, FileText, LogOut, ChevronRight, HelpCircle } from 'lucide-react';
-import { MOCK_USER } from '../constants';
 import { Button, Card } from '../components/UI.tsx';
 import { User, UserRole } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 interface SettingsProps {
   onLogout: () => void;
   user?: User;
 }
 
-const SettingsPage: React.FC<SettingsProps> = ({ onLogout, user = MOCK_USER }) => {
+const SettingsPage: React.FC<SettingsProps> = ({ onLogout, user }) => {
   const [darkMode, setDarkMode] = useState(false);
   const [notifications, setNotifications] = useState(true);
+  const { user: firebaseUser, isAdmin } = useAuth();
+
+  const resolvedUser: User = user ?? {
+    id: firebaseUser?.uid ?? 'unknown',
+    name: firebaseUser?.displayName ?? (isAdmin ? 'Admin' : 'User'),
+    email: firebaseUser?.email ?? '',
+    role: isAdmin ? UserRole.ADMIN : UserRole.USER,
+    avatarUrl: firebaseUser?.photoURL ?? 'https://picsum.photos/100/100',
+  };
 
   // Toggle Dark Mode
   useEffect(() => {
@@ -22,10 +31,10 @@ const SettingsPage: React.FC<SettingsProps> = ({ onLogout, user = MOCK_USER }) =
     }
   }, [darkMode]);
 
-  const isAdmin = user.role === UserRole.ADMIN;
+  const isAdminRole = resolvedUser.role === UserRole.ADMIN;
 
   // Define support items based on role
-  const supportItems = isAdmin 
+  const supportItems = isAdminRole 
     ? [
         { icon: HelpCircle, color: 'text-green-600', bg: 'bg-green-100', label: 'System Documentation' }
       ]
@@ -38,20 +47,20 @@ const SettingsPage: React.FC<SettingsProps> = ({ onLogout, user = MOCK_USER }) =
   return (
     <div className="pb-24 md:pb-8 pt-6 md:pt-8 px-4 md:px-8 max-w-4xl mx-auto space-y-6">
       <h1 className="text-2xl md:text-3xl font-bold text-rastha-primary dark:text-white">
-          {isAdmin ? 'System Configuration' : 'Settings'}
+          {isAdminRole ? 'System Configuration' : 'Settings'}
       </h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* === CITIZEN PROFILE VIEW === */}
-        {!isAdmin && (
+        {!isAdminRole && (
             <div className="md:col-span-2">
                 <Card className="p-6">
                     <div className="flex items-center gap-4">
-                        <img src={user.avatarUrl} className="w-16 h-16 rounded-full bg-gray-200" alt="profile"/>
+                <img src={resolvedUser.avatarUrl} className="w-16 h-16 rounded-full bg-gray-200" alt="profile"/>
                         <div>
-                            <h2 className="text-xl font-bold dark:text-white">{user.name}</h2>
-                            <p className="text-sm text-gray-500">{user.email}</p>
+                  <h2 className="text-xl font-bold dark:text-white">{resolvedUser.name}</h2>
+                  <p className="text-sm text-gray-500">{resolvedUser.email}</p>
                         </div>
                     </div>
                 </Card>
@@ -120,7 +129,7 @@ const SettingsPage: React.FC<SettingsProps> = ({ onLogout, user = MOCK_USER }) =
       </div>
 
       {/* Only show this logout button for regular users, as admins have one in the sidebar */}
-      {!isAdmin && (
+      {!isAdminRole && (
         <div className="pt-4 max-w-sm mx-auto">
           <Button 
             variant="danger" 

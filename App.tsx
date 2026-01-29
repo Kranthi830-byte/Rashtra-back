@@ -1,30 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import React from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from "react-router-dom";
 
 // Pages
-import Login from './pages/Login';
-import UserHome from './pages/UserHome';
-import ReportDamage from './pages/ReportDamage';
-import ComplaintStatusPage from './pages/ComplaintStatus';
-import SettingsPage from './pages/Settings';
-import AdminDashboard, { AdminAudit, AdminDataCenter } from './pages/AdminDashboard';
+import Login from "./pages/Login";
+import UserHome from "./pages/UserHome";
+import ReportDamage from "./pages/ReportDamage";
+import ComplaintStatusPage from "./pages/ComplaintStatus";
+import SettingsPage from "./pages/Settings";
+import AdminDashboard from "./pages/AdminDashboard";
+import AdminAudit from "./pages/AdminAudit.tsx";
+import AdminDataCenter from "./pages/AdminDataCenter.tsx";
 
 // Components
-import { BottomNav, SideNav, AdminSideNav, AdminMobileHeader } from './components/UI.tsx';
-import Chatbot from './components/Chatbot';
+import { BottomNav, SideNav, AdminSideNav, AdminMobileHeader } from "./components/UI";
+import Chatbot from "./components/Chatbot";
 
-// Types & Services
-import { UserRole } from './types';
-import { MOCK_ADMIN } from './constants';
+// Types
+import { UserRole } from "./types";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
-// --- LAYOUTS ---
+// Layouts
 const UserLayout = ({ onLogout }: { onLogout: () => void }) => (
-  <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-white flex">
+  <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
     <SideNav onLogout={onLogout} />
-    <main className="flex-1 pb-20 md:pb-0 md:pl-64 min-h-screen transition-all">
-      <div className="h-full overflow-y-auto">
-        <Outlet />
-      </div>
+    <main className="flex-1 md:pl-64">
+      <Outlet />
     </main>
     <Chatbot />
     <BottomNav />
@@ -32,61 +32,89 @@ const UserLayout = ({ onLogout }: { onLogout: () => void }) => (
 );
 
 const AdminLayout = ({ onLogout }: { onLogout: () => void }) => (
-  <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white flex">
+  <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
     <AdminSideNav onLogout={onLogout} />
-    <main className="flex-1 md:pl-64 min-h-screen transition-all flex flex-col">
-       <AdminMobileHeader onLogout={onLogout} />
-       <div className="flex-1 overflow-y-auto">
-         <Outlet />
-       </div>
+    <main className="flex-1 md:pl-64">
+      <AdminMobileHeader onLogout={onLogout} />
+      <Outlet />
     </main>
   </div>
 );
 
-// --- MAIN APP COMPONENT ---
-const App = () => {
-  const [userRole, setUserRole] = useState<UserRole | null>(null);
+const RequireAuth = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+};
 
-  // Safely trigger the test upload once on mount
-  
-const handleLogin = (role: UserRole) => {
-    setUserRole(role);
-  };
+const RequireAdmin = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading, isAdmin } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!isAdmin) return <Navigate to="/user/home" replace />;
+  return <>{children}</>;
+};
 
-  const handleLogout = () => {
-    setUserRole(null);
-    // Optional: window.location.reload(); 
-  };
+const AppRoutes = () => {
+  const { user, loading, isAdmin, logout } = useAuth();
+
+  if (loading) return null;
 
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        
-        <Route 
-          path="/login" 
-          element={userRole ? <Navigate to={userRole === UserRole.ADMIN ? "/admin/dashboard" : "/user/home"} replace /> : <Login onLogin={handleLogin} />} 
+        <Route path="/" element={<Navigate to="/login" />} />
+
+        <Route
+          path="/login"
+          element={
+            user ? (
+              <Navigate to={isAdmin ? "/admin/dashboard" : "/user/home"} />
+            ) : (
+              <Login />
+            )
+          }
         />
 
-        {/* User Routes */}
-        <Route path="/user" element={userRole === UserRole.USER ? <UserLayout onLogout={handleLogout} /> : <Navigate to="/login" replace />}>
+        {/* USER */}
+        <Route
+          path="/user"
+          element={
+            <RequireAuth>
+              <UserLayout onLogout={logout} />
+            </RequireAuth>
+          }
+        >
           <Route path="home" element={<UserHome />} />
           <Route path="report" element={<ReportDamage />} />
           <Route path="status" element={<ComplaintStatusPage />} />
-          <Route path="settings" element={<SettingsPage onLogout={handleLogout} />} />
+          <Route path="settings" element={<SettingsPage onLogout={logout} />} />
         </Route>
 
-        {/* Admin Routes */}
-        <Route path="/admin" element={userRole === UserRole.ADMIN ? <AdminLayout onLogout={handleLogout} /> : <Navigate to="/login" replace />}>
+        {/* ADMIN */}
+        <Route
+          path="/admin"
+          element={
+            <RequireAdmin>
+              <AdminLayout onLogout={logout} />
+            </RequireAdmin>
+          }
+        >
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="audit" element={<AdminAudit />} />
           <Route path="data" element={<AdminDataCenter />} />
-          <Route path="settings" element={<SettingsPage onLogout={handleLogout} user={MOCK_ADMIN} />} />
+          <Route path="settings" element={<SettingsPage onLogout={logout} />} />
         </Route>
-
       </Routes>
     </Router>
   );
 };
+
+const App = () => (
+  <AuthProvider>
+    <AppRoutes />
+  </AuthProvider>
+);
 
 export default App;

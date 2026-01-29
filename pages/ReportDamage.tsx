@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '../components/UI.tsx';
 import { Camera, MapPin, UploadCloud, CheckCircle, AlertTriangle, Loader2, X, Image as ImageIcon, RotateCcw, ArrowRight } from 'lucide-react';
 import { api } from '../services/mockApi.ts';
-import { MOCK_USER } from '../constants';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 enum Step {
   LOCATION = 1,
@@ -28,6 +28,7 @@ const ReportDamage = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   useEffect(() => {
     return () => {
@@ -134,6 +135,10 @@ const ReportDamage = () => {
 
   const handleSubmit = async () => {
     if (!image) return;
+    if (!user) {
+      navigate('/login');
+      return;
+    }
     if (!location && !manualAddress.trim()) {
         alert("Location missing.");
         setStep(Step.LOCATION);
@@ -147,7 +152,7 @@ const ReportDamage = () => {
           image, 
           location, 
           manualAddress, 
-          MOCK_USER.id,
+          user.uid,
           (status) => setLoadingText(status) 
       );
       setTimeout(() => {

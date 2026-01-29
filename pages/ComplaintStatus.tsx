@@ -1,21 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/mockApi.ts';
-import { MOCK_USER } from '../constants';
 import { Complaint } from '../types';
 import { Card, StatusBadge, SeverityBadge, Button } from '../components/UI.tsx';
 import { ChevronRight, X, Trash2, MapPin, AlertTriangle, Calendar } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const ComplaintStatusPage = () => {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
   const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   const fetchComplaints = async () => {
-    const data = await api.getUserComplaints(MOCK_USER.id);
+    if (!user) return;
+    const data = await api.getUserComplaints(user.uid);
     setComplaints(data);
   };
 
   useEffect(() => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
     fetchComplaints();
   }, []);
 

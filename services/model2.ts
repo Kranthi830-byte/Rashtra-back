@@ -11,13 +11,15 @@ export interface Model2Result {
   label: string;
 }
 
-const BACKEND_URL = 'http://127.0.0.1:5000/api/detect/general-damage';
+const BACKEND_URL = 'http://127.0.0.1:5000/api/detect/smart';
 
-export const analyzeGeneralDamage = async (image: File): Promise<Model2Result> => {
+export const analyzeGeneralDamage = async (image: File, lat: number = 0, lon: number = 0): Promise<Model2Result> => {
   console.log("[Model 2] Connecting to Local YOLO Backend...");
 
   const formData = new FormData();
   formData.append('file', image);
+  formData.append('lat', lat.toString());
+  formData.append('lon', lon.toString());
 
   try {
     // 1. Attempt Real Backend Connection
@@ -33,14 +35,17 @@ export const analyzeGeneralDamage = async (image: File): Promise<Model2Result> =
     const data = await response.json();
     console.log("[Model 2] Real YOLO Result:", data);
     
-    const severity = mapConfidenceToSeverity(data.confidence);
+    // Smart endpoint returns status, model, label, confidence, severity_score
+    const detected = data.status === "MAIN_LIST";
+    const confidence = data.confidence || 0;
+    const severity = mapConfidenceToSeverity(confidence);
 
     return {
-      detected: data.detected,
-      confidence: data.confidence,
+      detected: detected,
+      confidence: confidence,
       severity: severity,
-      severityScore: parseFloat((data.confidence * 10).toFixed(1)),
-      label: data.label
+      severityScore: data.severity_score || parseFloat((confidence * 10).toFixed(1)),
+      label: data.label || "Unknown"
     };
 
   } catch (error) {

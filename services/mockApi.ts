@@ -1,150 +1,216 @@
-import { INITIAL_COMPLAINTS } from '../constants';
-import { Complaint, ComplaintStatus, Severity, AdminLog, AdminActivityType, AdminStats } from '../types';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  Timestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
+import { db } from './firebase';
+import { StorageService } from './storageService';
+import { Complaint, ComplaintStatus, Severity, AdminActivityType, AdminLog, AdminStats } from '../types';
 import { analyzePotholes } from './model1';
 import { analyzeGeneralDamage } from './model2';
 
-// Simulated latency
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+type ComplaintDoc = Omit<Complaint, 'id' | 'timestamp'> & {
+  timestamp: Timestamp;
+};
 
-class MockApiService {
-  private complaints: Complaint[] = [...INITIAL_COMPLAINTS];
-  
-  // In-memory storage for admin logs (simulating database)
-  // Started empty
-  private adminLogs: AdminLog[] = [];
+const toDate = (ts: any): Date => {
+  if (!ts) return new Date(0);
+  if (typeof ts?.toDate === 'function') return ts.toDate();
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? new Date(0) : d;
+};
+
+class FirebaseApiService {
+  private readonly COLLECTIONS = {
+    COMPLAINTS: 'complaints',
+    ADMIN_LOGS: 'adminLogs',
+  } as const;
 
   async getComplaints(): Promise<Complaint[]> {
-    await delay(800);
-    return [...this.complaints];
+    const q = query(
+      collection(db, this.COLLECTIONS.COMPLAINTS),
+      orderBy('timestamp', 'desc'),
+      limit(200)
+    );
+
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => {
+      const data = d.data() as Partial<ComplaintDoc>;
+      return {
+        id: d.id,
+        userId: String(data.userId ?? ''),
+        imageUrl: String(data.imageUrl ?? ''),
+        latitude: Number(data.latitude ?? 0),
+        longitude: Number(data.longitude ?? 0),
+        status: (data.status ?? ComplaintStatus.SUBMITTED) as ComplaintStatus,
+        severity: (data.severity ?? Severity.LOW) as Severity,
+        severityScore: Number(data.severityScore ?? 0),
+        description: data.description,
+        timestamp: toDate(data.timestamp),
+        address: String(data.address ?? ''),
+      } satisfies Complaint;
+    });
   }
 
   async getUserComplaints(userId: string): Promise<Complaint[]> {
-    await delay(500);
-    return this.complaints.filter(c => c.userId === userId);
+    const q = query(
+      collection(db, this.COLLECTIONS.COMPLAINTS),
+      where('userId', '==', userId),
+      orderBy('timestamp', 'desc'),
+      limit(200)
+    );
+
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => {
+      const data = d.data() as Partial<ComplaintDoc>;
+      return {
+        id: d.id,
+        userId: String(data.userId ?? ''),
+        imageUrl: String(data.imageUrl ?? ''),
+        latitude: Number(data.latitude ?? 0),
+        longitude: Number(data.longitude ?? 0),
+        status: (data.status ?? ComplaintStatus.SUBMITTED) as ComplaintStatus,
+        severity: (data.severity ?? Severity.LOW) as Severity,
+        severityScore: Number(data.severityScore ?? 0),
+        description: data.description,
+        timestamp: toDate(data.timestamp),
+        address: String(data.address ?? ''),
+      } satisfies Complaint;
+    });
   }
 
-  // --- ADMIN LOGGING ---
   async logAdminActivity(type: AdminActivityType, details?: string): Promise<void> {
-    const newLog: AdminLog = {
-      id: `log-${Date.now()}`,
+    await addDoc(collection(db, this.COLLECTIONS.ADMIN_LOGS), {
       type,
-      timestamp: new Date(),
-      details
-    };
-    this.adminLogs.unshift(newLog); // Add to beginning
-    console.log(`[Admin Log] ${type}: ${details || ''}`);
+      details: details ?? '',
+      timestamp: Timestamp.now(),
+    });
   }
 
   async getAdminStats(): Promise<AdminStats> {
-    await delay(600);
-    const totalRepairOrders = this.adminLogs.filter(l => l.type === 'REPAIR_ORDER').length;
-    const totalDeletedCases = this.adminLogs.filter(l => l.type === 'DELETE_CASE').length;
-    
+    const q = query(
+      collection(db, this.COLLECTIONS.ADMIN_LOGS),
+      orderBy('timestamp', 'desc'),
+      limit(200)
+    );
+    const snap = await getDocs(q);
+
+    const logs: AdminLog[] = snap.docs.map((d) => {
+      const data = d.data() as any;
+      return {
+        id: d.id,
+        type: data.type as AdminActivityType,
+        timestamp: toDate(data.timestamp),
+        details: data.details,
+      };
+    });
+
+    const totalRepairOrders = logs.filter((l) => l.type === 'REPAIR_ORDER').length;
+    const totalDeletedCases = logs.filter((l) => l.type === 'DELETE_CASE').length;
+
     return {
       totalRepairOrders,
       totalDeletedCases,
-      logs: [...this.adminLogs]
+      logs,
     };
   }
 
-  // --- AI BACKEND PIPELINE ---
-  // Now accepts an optional callback to update the UI with the exact step being executed
+  // --- AI BACKEND PIPELINE (client-side for now) ---
+  // Persists the result into Firestore + uploads the image to Firebase Storage.
   async analyzeAndReport(
-    image: File, 
-    location: { lat: number, lng: number } | null, 
-    manualAddress: string, 
+    image: File,
+    location: { lat: number; lng: number } | null,
+    manualAddress: string,
     userId: string,
     onStatusUpdate?: (status: string) => void
   ): Promise<Complaint> {
-    console.log("--- STARTING BACKEND ANALYSIS CHAIN ---");
-    onStatusUpdate?.("Initializing Analysis Pipeline...");
-    
-    // 1. Determine Address Strategy
-    let address = manualAddress;
-    let finalLat = location?.lat || 0;
-    let finalLng = location?.lng || 0;
+    onStatusUpdate?.('Uploading evidence...');
 
+    const imageUrl = await StorageService.uploadPotholeImage(image);
+
+    onStatusUpdate?.('Initializing Analysis Pipeline...');
+
+    let address = (manualAddress || '').trim();
+    const finalLat = location?.lat ?? 0;
+    const finalLng = location?.lng ?? 0;
     if (!address && location) {
-        // Mock reverse geocode for GPS
-        address = `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)} (GPS Detected)`;
-    } else if (!address) {
-        address = "Unknown Location";
+      address = `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)} (GPS Detected)`;
     }
+    if (!address) address = 'Unknown Location';
 
-    // 2. Run Model 1 (Pothole Expert)
-    onStatusUpdate?.("Running Model 1 (Pothole Expert)...");
-    const potholeResult = await analyzePotholes(image);
-    
-    let status = ComplaintStatus.WAITING_LIST;
-    let severity = Severity.LOW;
+    onStatusUpdate?.('Running Model 1 (Pothole Expert)...');
+    const potholeResult = await analyzePotholes(image, finalLat, finalLng);
+
+    let status: ComplaintStatus = ComplaintStatus.WAITING_LIST;
+    let severity: Severity = Severity.LOW;
     let severityScore = 0;
-    let description = "";
+    let description = '';
 
     if (potholeResult.detected) {
-        // CASE A: Model 1 Success
-        onStatusUpdate?.("Model 1 Verified: Pothole Detected!");
-        console.log("Model 1 (Pothole) Success: Moving to Main List");
-        status = ComplaintStatus.AUTO_VERIFIED;
-        severity = potholeResult.severity;
-        severityScore = potholeResult.severityScore;
-        description = potholeResult.label;
+      onStatusUpdate?.('Model 1 Verified: Pothole Detected!');
+      status = ComplaintStatus.AUTO_VERIFIED;
+      severity = potholeResult.severity;
+      severityScore = potholeResult.severityScore;
+      description = potholeResult.label;
     } else {
-        // CASE B: Model 1 Failed -> Try Model 2
-        onStatusUpdate?.("Model 1 Negative. Escalating to Model 2...");
-        console.log("Model 1 Failed. Handing over to Model 2...");
-        
-        // 3. Run Model 2 (General Damage Expert)
-        const damageResult = await analyzeGeneralDamage(image);
+      onStatusUpdate?.('Model 1 Negative. Escalating to Model 2...');
+      const damageResult = await analyzeGeneralDamage(image, finalLat, finalLng);
 
-        if (damageResult.detected) {
-            // CASE C: Model 2 Success
-            onStatusUpdate?.("Model 2 Verified: General Damage Detected!");
-            console.log("Model 2 (General) Success: Moving to Main List");
-            status = ComplaintStatus.AUTO_VERIFIED;
-            severity = damageResult.severity;
-            severityScore = damageResult.severityScore;
-            description = damageResult.label;
-        } else {
-            // CASE D: Both Models Failed
-            onStatusUpdate?.("No clear damage detected. Moving to Waiting List.");
-            console.log("Model 2 Failed. Moving to Waiting List.");
-            status = ComplaintStatus.WAITING_LIST;
-            severity = Severity.LOW;
-            severityScore = 0.5;
-            description = "No clear damage detected by AI systems. Pending manual review.";
-        }
+      if (damageResult.detected) {
+        onStatusUpdate?.('Model 2 Verified: General Damage Detected!');
+        status = ComplaintStatus.AUTO_VERIFIED;
+        severity = damageResult.severity;
+        severityScore = damageResult.severityScore;
+        description = damageResult.label;
+      } else {
+        onStatusUpdate?.('No clear damage detected. Moving to Waiting List.');
+        status = ComplaintStatus.WAITING_LIST;
+        severity = Severity.LOW;
+        severityScore = 0.5;
+        description = 'No clear damage detected by AI systems. Pending manual review.';
+      }
     }
 
-    const newComplaint: Complaint = {
-      id: `TKN-${Math.floor(1000 + Math.random() * 9000)}`,
+    const payload: ComplaintDoc = {
       userId,
-      imageUrl: URL.createObjectURL(image),
+      imageUrl,
       latitude: finalLat,
       longitude: finalLng,
       status,
       severity,
       severityScore,
       description,
-      timestamp: new Date(), // Timestamp captured here
-      address: address
+      timestamp: Timestamp.now(),
+      address,
     };
 
-    this.complaints.unshift(newComplaint);
-    return newComplaint;
+    onStatusUpdate?.('Saving report...');
+    const docRef = await addDoc(collection(db, this.COLLECTIONS.COMPLAINTS), payload);
+
+    return {
+      id: docRef.id,
+      ...payload,
+      timestamp: payload.timestamp.toDate(),
+    };
   }
 
   async updateComplaintStatus(id: string, status: ComplaintStatus): Promise<void> {
-    await delay(500);
-    const index = this.complaints.findIndex(c => c.id === id);
-    if (index !== -1) {
-      this.complaints[index].status = status;
-    }
+    await updateDoc(doc(db, this.COLLECTIONS.COMPLAINTS, id), {
+      status,
+    });
   }
 
   async deleteComplaint(id: string): Promise<void> {
-    await delay(500);
-    this.complaints = this.complaints.filter(c => c.id !== id);
+    await deleteDoc(doc(db, this.COLLECTIONS.COMPLAINTS, id));
   }
 }
 
-export const api = new MockApiService();
+export const api = new FirebaseApiService();

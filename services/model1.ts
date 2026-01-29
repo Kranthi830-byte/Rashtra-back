@@ -11,13 +11,15 @@ export interface Model1Result {
   label: string;
 }
 
-const BACKEND_URL = 'http://127.0.0.1:5000/api/detect/potholes';
+const BACKEND_URL = 'http://127.0.0.1:5000/api/detect/smart';
 
-export const analyzePotholes = async (image: File): Promise<Model1Result> => {
+export const analyzePotholes = async (image: File, lat: number = 0, lon: number = 0): Promise<Model1Result> => {
   console.log("[Model 1] Connecting to Local YOLO Backend...");
 
   const formData = new FormData();
   formData.append('file', image);
+  formData.append('lat', lat.toString());
+  formData.append('lon', lon.toString());
 
   try {
     // 1. Attempt Real Backend Connection
@@ -33,12 +35,16 @@ export const analyzePotholes = async (image: File): Promise<Model1Result> => {
     const data = await response.json();
     console.log("[Model 1] Real YOLO Result:", data);
 
+    // Smart endpoint returns status, model, label, confidence, severity_score
+    const detected = data.status === "MAIN_LIST";
+    const confidence = data.confidence || 0;
+    
     return {
-      detected: data.detected,
-      confidence: data.confidence,
-      severity: data.confidence > 0.8 ? Severity.HIGH : Severity.MEDIUM,
-      severityScore: parseFloat((data.confidence * 10).toFixed(1)),
-      label: data.label
+      detected: detected,
+      confidence: confidence,
+      severity: confidence > 0.8 ? Severity.HIGH : Severity.MEDIUM,
+      severityScore: data.severity_score || parseFloat((confidence * 10).toFixed(1)),
+      label: data.label || "Unknown"
     };
 
   } catch (error) {
