@@ -1,5 +1,5 @@
 {
-  "name": "rashtra---smart-road-reporting",
+  "name": "rashtra--smart-road-reporting",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.38.0",
+    "firebase": "^12.8.0",
     "leaflet": "1.9.4",
     "lucide-react": "^0.563.0",
     "react": "^19.2.3",
